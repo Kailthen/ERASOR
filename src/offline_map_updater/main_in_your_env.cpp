@@ -1,6 +1,9 @@
 //
 // Created by shapelim on 21. 10. 18..
 //
+#include <iostream>
+#include <chrono>
+#include <thread>
 
 #include "tools/erasor_utils.hpp"
 #include <boost/format.hpp>
@@ -74,7 +77,7 @@ int main(int argc, char **argv)
 
     // Set ROS visualization publishers
     ros::Publisher NodePublisher = nh.advertise<erasor::node>("/node/combined/optimized", 100);
-    ros::Rate loop_rate(10);
+    // ros::Rate loop_rate(10);
 
     /***
      * Set target data
@@ -91,7 +94,7 @@ int main(int argc, char **argv)
     cout << "\033[1;32mTarget directory:" << DATA_DIR << "\033[0m" << endl;
     string raw_map_path = DATA_DIR + "/dense_global_map.pcd";
     string pose_path = DATA_DIR + "/poses_lidar2body.csv";
-    string pcd_dir = DATA_DIR + "/pcds"; //
+    string pcd_dir = DATA_DIR + "/data"; //
     // Load raw pointcloud
 
     vector<Eigen::Matrix4f> poses;
@@ -99,6 +102,10 @@ int main(int argc, char **argv)
 
     int N = poses.size();
 
+    // int i = INIT_IDX;
+    ros::Rate loop_rate(10);//10HZ
+    // while (ros::ok()) {
+        // if (++i >= N) {break;}
     for (int i = INIT_IDX; i < N; ++i) {
         signal(SIGINT, erasor_utils::signal_callback_handler);
 
@@ -111,13 +118,22 @@ int main(int argc, char **argv)
         node.odom = erasor_utils::eigen2geoPose(poses[i]);
         node.lidar = erasor_utils::cloud2msg(*srcCloud);
         NodePublisher.publish(node);
+        cout<< "pub msg .." << endl;
         ros::spinOnce();
-        loop_rate.sleep();
+        cout<< "pub msg0 .." << endl;
+        // loop_rate.sleep();
+        // ros::Duration(0.1).sleep();
+
+        cout<< "pub msg1 .." << endl;
+
+        std::this_thread::sleep_for(100ms);
 
         if (STOP_FOR_EACH_FRAME) {
             cout<< "[Debug]: STOP! Press any button to continue" <<endl;
             cin.ignore();
         }
+
+        cout<< "pub msg2 .." << endl;
     }
 
     updater.save_static_map(0.2);
