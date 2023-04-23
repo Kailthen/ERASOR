@@ -12,7 +12,6 @@
 #include <iostream>
 #include <vector>
 #include <memory>
-
 #include <ros/ros.h>
 #include <pcl/common/common.h>
 #include <pcl/common/centroid.h>
@@ -30,6 +29,7 @@
 #include <pcl/filters/approximate_voxel_grid.h>
 #include <pcl/PCLPointCloud2.h>
 #include <pcl/visualization/pcl_visualizer.h>
+
 // ROS msgs
 #include <erasor/node.h>
 #include <visualization_msgs/Marker.h>

@@ -26,6 +26,8 @@ namespace erasor {
         double submap_size_;
         double submap_center_x_;
         double submap_center_y_;
+        double horizonal_fov_min_;
+        double horizonal_fov_max_;
 
         /**< ERASOR Version
          * v2: Naive

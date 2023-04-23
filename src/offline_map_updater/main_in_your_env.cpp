@@ -93,7 +93,7 @@ int main(int argc, char **argv)
     // Set target data
     cout << "\033[1;32mTarget directory:" << DATA_DIR << "\033[0m" << endl;
     string raw_map_path = DATA_DIR + "/dense_global_map.pcd";
-    string pose_path = DATA_DIR + "/poses_lidar2body.csv";
+    string pose_path = DATA_DIR + "/pose.csv";
     string pcd_dir = DATA_DIR + "/data"; //
     // Load raw pointcloud
 
@@ -101,6 +101,7 @@ int main(int argc, char **argv)
     load_all_poses(pose_path, poses);
 
     int N = poses.size();
+    cout << "Pose count:" << N << endl;
 
     // int i = INIT_IDX;
     ros::Rate loop_rate(10);//10HZ
@@ -111,6 +112,7 @@ int main(int argc, char **argv)
 
         pcl::PointCloud<PointType>::Ptr srcCloud(new pcl::PointCloud<PointType>);
         string pcd_name = (boost::format("%s/%06d.pcd") % pcd_dir % i).str();
+        cout << "Loading " << pcd_name << endl;
         erasor_utils::load_pcd(pcd_name, srcCloud);
 
         erasor::node node;
@@ -118,13 +120,9 @@ int main(int argc, char **argv)
         node.odom = erasor_utils::eigen2geoPose(poses[i]);
         node.lidar = erasor_utils::cloud2msg(*srcCloud);
         NodePublisher.publish(node);
-        cout<< "pub msg .." << endl;
         ros::spinOnce();
-        cout<< "pub msg0 .." << endl;
         // loop_rate.sleep();
         // ros::Duration(0.1).sleep();
-
-        cout<< "pub msg1 .." << endl;
 
         std::this_thread::sleep_for(100ms);
 
@@ -133,7 +131,7 @@ int main(int argc, char **argv)
             cin.ignore();
         }
 
-        cout<< "pub msg2 .." << endl;
+        cout<< "pub msg .." << endl;
     }
 
     updater.save_static_map(0.2);

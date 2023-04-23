@@ -1,6 +1,23 @@
+#include <iostream>
+#include <fstream>
+#include <cstdlib>
+#include <filesystem>
+// #include <numbers>
 #include "erasor/OfflineMapUpdater.h"
 
 using namespace erasor;
+namespace fs = std::filesystem;
+
+template<typename ... Args>
+std::string string_format( const std::string& format, Args ... args )
+{
+    int size_s = std::snprintf( nullptr, 0, format.c_str(), args ... ) + 1; // Extra space for '\0'
+    if( size_s <= 0 ){ throw std::runtime_error( "Error during formatting." ); }
+    auto size = static_cast<size_t>( size_s );
+    std::unique_ptr<char[]> buf( new char[ size ] );
+    std::snprintf( buf.get(), size, format.c_str(), args ... );
+    return std::string( buf.get(), buf.get() + size - 1 ); // We don't want the '\0' inside
+}
 
 OfflineMapUpdater::OfflineMapUpdater() {
     sub_node_ = nh.subscribe<erasor::node>("/node/combined/optimized", 2000, &OfflineMapUpdater::callback_node, this);
@@ -67,10 +84,14 @@ void OfflineMapUpdater::set_params() {
     nh.param("/MapUpdater/map_voxel_size", map_voxel_size_, 0.05);
     nh.param("/MapUpdater/voxelization_interval", global_voxelization_period_, 10);
     nh.param("/MapUpdater/removal_interval", removal_interval_, 2);
+    nh.param("/MapUpdater/horizonal_fov_min", horizonal_fov_min_, -180.0);
+    nh.param("/MapUpdater/horizonal_fov_max", horizonal_fov_max_, 180.0);
+
     nh.param<std::string>("/MapUpdater/data_name", data_name_, "00");
     nh.param<std::string>("/MapUpdater/env", environment_, "outdoor");
     nh.param<std::string>("/MapUpdater/initial_map_path", map_name_, "/");
     nh.param<std::string>("/MapUpdater/save_path", save_path_, "/");
+    fs::create_directories(save_path_ + "/dynamic");
 
     nh.param<bool>("/large_scale/is_large_scale", is_large_scale_, false);
     nh.param("/large_scale/submap_size", submap_size_, 200.0);
@@ -190,7 +211,7 @@ void OfflineMapUpdater::save_static_map(float voxel_size) {
 
     std::cout << "\033[1;32mTARGET: " << save_path_ + "/" + data_name_ + "_result.pcd" << "\033[0m" << std::endl;
     std::cout << "Voxelization operated with " << voxel_size << " voxel size" << std::endl;
-    pcl::io::savePCDFileASCII(save_path_ + "/" + data_name_ + "_result.pcd", map_to_be_saved);
+    pcl::io::savePCDFileBinaryCompressed(save_path_ + "/" + data_name_ + "_result.pcd", map_to_be_saved);
     std::cout << "\033[1;32mComplete to save the final static map\033[0m" << std::endl;
 
 }
@@ -245,6 +266,8 @@ void OfflineMapUpdater::callback_node(const erasor::node::ConstPtr &msg) {
         /**< 2. Set map pointcloud -> map VOI  */
         double x_curr = tf_body2origin_(0, 3);
         double y_curr = tf_body2origin_(1, 3);
+        ROS_INFO_STREAM("current pos:" << x_curr << "," << y_curr);
+
 
         if (is_large_scale_) {
             reassign_submap(x_curr, y_curr);
@@ -316,6 +339,14 @@ void OfflineMapUpdater::callback_node(const erasor::node::ConstPtr &msg) {
         publish(*ptr_query_viz, pub_debug_pc2_curr_);
         publish(*static_objs_to_viz_, pub_static_arranged_);
         publish(*dynamic_objs_to_viz_, pub_dynamic_arranged_);
+        // 保存动态点文件
+        std::string save_to = string_format("%s/dynamic/%06d.pcd", save_path_.c_str(), msg->header.seq);
+        ROS_INFO_STREAM(setw(22) << "Save dynamic_objs to " << save_to.c_str() << ". point size" << dynamic_objs_to_viz_->points.size());
+        dynamic_objs_to_viz_->height = 1;
+        dynamic_objs_to_viz_->width = dynamic_objs_to_viz_->points.size();
+        // pcl::io::savePCDFileASCII(save_to, *dynamic_objs_to_viz_);
+        pcl::io::savePCDFileBinaryCompressed(save_to, *dynamic_objs_to_viz_);
+        dynamic_objs_to_viz_->clear();
         publish(*map_rejected_, pub_map_rejected_);
         publish(*query_rejected_, pub_curr_rejected_);
 
@@ -392,7 +423,9 @@ void OfflineMapUpdater::fetch_VoI(
 
         for (auto const &pt : (*map_arranged_).points) {
             double dist_square = pow(pt.x - x_criterion, 2) + pow(pt.y - y_criterion, 2);
-            if (dist_square < max_dist_square) {
+            double fov = std::atan2(pt.y, pt.x) * 180.0 / PI; // 按照lidar水平fov，剪切
+            if (dist_square < max_dist_square \
+                    && fov >= horizonal_fov_min_ && fov <= horizonal_fov_max_) {
                 map_voi_wrt_origin_->points.emplace_back(pt);
             } else {
                 outskirts.points.emplace_back(pt);
@@ -418,7 +451,10 @@ void OfflineMapUpdater::fetch_VoI(
             std::cout << "    " << isTrue.size();
             for (std::size_t i = 0; i < pointIdxRadiusSearch.size(); ++i) {
                 auto pt = (*cloud)[pointIdxRadiusSearch[i]];
-                map_voi_wrt_origin_->points.emplace_back(pt);
+                double fov = std::atan2(pt.y, pt.x) * 180.0 / PI; // 按照lidar水平fov，剪切
+                if (fov >= horizonal_fov_min_ && fov <= horizonal_fov_max_) {
+                    map_voi_wrt_origin_->points.emplace_back(pt);
+                }
                 isTrue[pointIdxRadiusSearch[i]] = true;
             }
             for (size_t      j = 0; j < map_arranged_->points.size(); ++j) {
